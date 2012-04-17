@@ -129,9 +129,6 @@ class Shop(object):
             url(r'^checkout/$', checkout_process_decorator(
                     cart_not_empty, order_already_confirmed, order_cart_validates,
                 )(self.checkout), name='plata_shop_checkout'),
-            url(r'^discounts/$', checkout_process_decorator(
-                    cart_not_empty, order_already_confirmed, order_cart_validates,
-                )(self.discounts), name='plata_shop_discounts'),
             url(r'^confirmation/$', checkout_process_decorator(
                     cart_not_empty, order_cart_validates,
                  )(self.confirmation), name='plata_shop_confirmation'),
@@ -344,7 +341,7 @@ class Shop(object):
 
             if orderform.is_valid():
                 orderform.save()
-                return redirect('plata_shop_discounts')
+                return redirect('plata_shop_confirmation')
         else:
             orderform = OrderForm(**orderform_kwargs)
 
@@ -364,42 +361,6 @@ class Shop(object):
         """Returns the discount form"""
         return shop_forms.DiscountForm
 
-    def discounts(self, request, order):
-        """Handles the discount code entry page"""
-        DiscountForm = self.discounts_form(request, order)
-
-        kwargs = {
-            'order': order,
-            'discount_model': self.discount_model,
-            'request': request,
-            'shop': self,
-            }
-
-        if request.method == 'POST':
-            form = DiscountForm(request.POST, **kwargs)
-
-            if form.is_valid():
-                form.save()
-
-                if 'proceed' in request.POST:
-                    return redirect('plata_shop_confirmation')
-                return HttpResponseRedirect('.')
-        else:
-            form = DiscountForm(**kwargs)
-
-        order.recalculate_total()
-
-        return self.render_discounts(request, {
-            'order': order,
-            'form': form,
-            'progress': 'discounts',
-            })
-
-    def render_discounts(self, request, context):
-        """Renders the discount code entry page"""
-        return self.render(request, 'plata/shop_discounts.html',
-            self.get_context(request, context))
-
     def confirmation_form(self, request, order):
         """Returns the confirmation and payment module selection form"""
         return shop_forms.ConfirmationForm
@@ -414,24 +375,46 @@ class Shop(object):
         order.recalculate_total()
 
         ConfirmationForm = self.confirmation_form(request, order)
+        DiscountsForm = self.discounts_form(request, order)
 
-        kwargs = {
+        confirmation_kwargs = {
             'order': order,
             'request': request,
             'shop': self,
             }
 
-        if request.method == 'POST':
-            form = ConfirmationForm(request.POST, **kwargs)
+        discount_kwargs = {
+            'prefix': 'discounts',
+            'order': order,
+            'discount_model': self.discount_model,
+            'request': request,
+            'shop': self,
+            }
 
-            if form.is_valid():
-                return form.process_confirmation()
-        else:
-            form = ConfirmationForm(**kwargs)
+        confirmationform = None
+        discountsform = None
+
+        if request.method == 'POST':
+            if '_discountsform' in request.POST:
+                discountsform = DiscountsForm(request.POST, **discount_kwargs)
+                if discountsform.is_valid():
+                    discountsform.save()
+                    return HttpResponseRedirect('.')
+
+            else:
+                confirmationform = ConfirmationForm(request.POST, **confirmation_kwargs)
+                if confirmationform.is_valid():
+                    return confirmationform.process_confirmation()
+
+        if confirmationform is None:
+            confirmationform = ConfirmationForm(**confirmation_kwargs)
+        if discountsform is None:
+            discountsform = DiscountsForm(**discount_kwargs)
 
         return self.render_confirmation(request, {
             'order': order,
-            'form': form,
+            'confirmationform': confirmationform,
+            'discountsform': discountsform,
             'confirmed': request.GET.get('confirmed', False), # Whether the order had
                                                               # already been confirmed
             'progress': 'confirmation',

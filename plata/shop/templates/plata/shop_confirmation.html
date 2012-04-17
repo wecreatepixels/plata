@@ -10,12 +10,28 @@
 {% include "plata/_order_overview.html" %}
 
 <form method="post" action=".">{% csrf_token %}
-<h2>{% trans "Payment and order confirmation" %}</h2>
-{% form_errors form %}
+<input type="hidden" name="_discountsform" value="1">
+<h2>{% trans "Discounts" %}</h2>
+{% form_errors discountsform %}
 
 <table>
-{% form_item form.terms_and_conditions %}
-{% form_item form.payment_method %}
+{% form_item discountsform.code %}
+<tr>
+    <td></td>
+    <td>
+        <input type="submit" name="save" value="{% trans "Add voucher" %}">
+    </td>
+</tr>
+</table>
+</form>
+
+<form method="post" action=".">{% csrf_token %}
+<h2>{% trans "Payment and order confirmation" %}</h2>
+{% form_errors confirmationform %}
+
+<table>
+{% form_item confirmationform.terms_and_conditions %}
+{% form_item confirmationform.payment_method %}
 <tr>
     <td></td>
     <td><button type="submit">{% trans "Proceed to payment" %}</button></td>

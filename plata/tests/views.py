@@ -1,3 +1,4 @@
+from decimal import Decimal
 import os
 import re
 
@@ -32,7 +33,6 @@ class ViewTest(PlataTest):
         """Test cart is empty redirects work properly"""
         self.assertContains(self.client.get('/cart/'), 'Cart is empty')
         self.assertRedirects(self.client.get('/checkout/'), '/cart/')
-        self.assertRedirects(self.client.get('/discounts/'), '/cart/')
         self.assertRedirects(self.client.get('/confirmation/'), '/cart/')
 
     def test_02_authenticated_user_has_contact(self):
@@ -164,10 +164,11 @@ class ViewTest(PlataTest):
             'order-email': 'something@example.com',
             'order-currency': 'CHF',
             'order-notes': 'Test\n\nJust testing.',
-            }), '/discounts/')
+            }), '/confirmation/')
 
-        self.assertContains(self.client.post('/discounts/', {
-            'code': 'something-invalid',
+        self.assertContains(self.client.post('/confirmation/', {
+            '_discountsform': '1',
+            'discounts-code': 'something-invalid',
             }), 'not validate')
 
         Discount.objects.create(
@@ -177,12 +178,9 @@ class ViewTest(PlataTest):
             name='Percentage discount',
             value=30)
 
-        self.assertRedirects(self.client.post('/discounts/', {
-            'code': 'asdf',
-            }), '/discounts/')
-
-        self.assertRedirects(self.client.post('/discounts/', {
-            'proceed': 'True',
+        self.assertRedirects(self.client.post('/confirmation/', {
+            '_discountsform': '1',
+            'discounts-code': 'asdf',
             }), '/confirmation/')
 
         self.assertEqual(self.client.post('/confirmation/', {}).status_code, 200)
@@ -428,7 +426,7 @@ class ViewTest(PlataTest):
         self.assertEqual(len(mail.outbox), 0)
         checkout_data['order-email'] = 'something@example.com'
         self.assertRedirects(self.client.post('/checkout/', checkout_data),
-            '/discounts/')
+            '/confirmation/')
         self.assertEqual(len(mail.outbox), 1)
 
         # There should be exactly one contact object now
@@ -471,7 +469,7 @@ class ViewTest(PlataTest):
         self.assertEqual(len(mail.outbox), 0)
         checkout_data['order-email'] = 'something@example.com'
         self.assertRedirects(self.client.post('/checkout/', checkout_data),
-            '/discounts/')
+            '/confirmation/')
         self.assertEqual(len(mail.outbox), 1)
 
         # There should be exactly one contact object now
@@ -532,7 +530,7 @@ class ViewTest(PlataTest):
 
         self.assertEqual(len(mail.outbox), 0)
         self.assertRedirects(self.client.post('/checkout/', checkout_data),
-            '/discounts/')
+            '/confirmation/')
         self.assertEqual(len(mail.outbox), 0)
 
         contact = Contact.objects.get()
@@ -578,7 +576,7 @@ class ViewTest(PlataTest):
 
         # If order wasn't active after logging in anymore, this would not work
         self.assertRedirects(self.client.post('/checkout/', checkout_data),
-            '/discounts/')
+            '/confirmation/')
 
         contact = Contact.objects.get()
         self.assertEqual(contact.billing_first_name, 'Fritz')
@@ -654,15 +652,19 @@ class ViewTest(PlataTest):
             currency='CHF',
             )
 
-        self.assertRedirects(self.client.post('/discounts/', {
-            'code': discount.code,
-            'proceed': 'True',
+        self.assertRedirects(self.client.post('/confirmation/', {
+            '_discountsform': '1',
+            'discounts-code': discount.code,
             }), '/confirmation/')
 
         self.assertRedirects(self.client.post('/confirmation/', {
             'terms_and_conditions': True,
             'payment_method': 'plata.payment.modules.cod',
             }), '/order/success/')
+
+        order = Order.objects.get()
+        self.assertAlmostEqual(order.total, Decimal('0.00'))
+        self.assertAlmostEqual(order.balance_remaining, Decimal('0.00'))
 
         self.assertEqual(Discount.objects.count(), 2)
 
@@ -676,9 +678,9 @@ class ViewTest(PlataTest):
         self.client.get('/order/new/')
 
         self.client.post(p1.get_absolute_url(), {'quantity': 1})
-        self.assertRedirects(self.client.post('/discounts/', {
-            'code': new_discount.code,
-            'proceed': 'True',
+        self.assertRedirects(self.client.post('/confirmation/', {
+            '_discountsform': '1',
+            'discounts-code': new_discount.code,
             }), '/confirmation/')
 
         self.assertRedirects(self.client.post('/confirmation/', {
@@ -686,13 +688,23 @@ class ViewTest(PlataTest):
             'payment_method': 'plata.payment.modules.cod',
             }), '/order/success/')
 
+        order = Order.objects.latest('id')
+        self.assertAlmostEqual(order.total, Decimal('0.00'))
+        self.assertAlmostEqual(order.balance_remaining, Decimal('0.00'))
+        self.assertEqual(Order.objects.count(), 2)
+
         self.client.get('/order/new/')
         self.client.get('/order/new/') # Should not do anything the second time
         self.client.post(p1.get_absolute_url(), {'quantity': 1})
-        self.assertContains(self.client.post('/discounts/', {
-            'code': new_discount.code,
-            'proceed': 'True',
+        self.assertContains(self.client.post('/confirmation/', {
+            '_discountsform': '1',
+            'discounts-code': new_discount.code,
             }), 'Allowed uses for this discount has already been reached.')
+
+        order = Order.objects.latest('id')
+        self.assertAlmostEqual(order.total, Decimal('79.90'))
+        self.assertAlmostEqual(order.balance_remaining, Decimal('79.90'))
+        self.assertEqual(Order.objects.count(), 3)
 
         # Stock transactions must be created for orders which are paid from the start
         # 10 purchase, -5 sale, -1 sale
