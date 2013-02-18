@@ -7,7 +7,6 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.urlresolvers import get_callable, reverse
-from django.views.decorators.csrf import csrf_exempt
 from django.forms.models import inlineformset_factory
 from django.http import HttpResponseRedirect
 from django.shortcuts import redirect, render
@@ -443,7 +442,6 @@ class Shop(object):
         return self.render(request, 'plata/shop_confirmation.html',
             self.get_context(request, context))
 
-    @csrf_exempt
     def order_success(self, request):
         """Handles order successes (e.g. when an order has been successfully paid for)"""
         order = self.order_from_request(request)
